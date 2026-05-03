@@ -17,3 +17,4 @@ data/
 .run/
 logs/
 *.sqlite3
+spec_*.md

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from resume_hunt.analyses.routes import router as analyses_router
 from resume_hunt.auth.routes import router as auth_router
 from resume_hunt.candidates.routes import router as candidates_router
 from resume_hunt.config import get_settings
@@ -30,6 +31,7 @@ app.include_router(auth_router)
 app.include_router(documents_router)
 app.include_router(candidates_router)
 app.include_router(jobs_router)
+app.include_router(analyses_router)
 app.include_router(ml_router)
 
 

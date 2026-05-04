@@ -1,1 +1,1 @@
-"""Analysis orchestration module placeholder for M4."""
+"""Analysis orchestration for evidence, gaps, scoring, and recommendations."""

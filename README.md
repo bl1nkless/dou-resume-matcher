@@ -4,15 +4,19 @@ ML-first job search copilot for Ukrainian IT candidates. The MVP starts with one
 
 ## Current Milestone
 
-M0: project foundation.
+M2: rules-baseline structured extraction and single-vacancy fit analysis.
 
 Included now:
 
 - FastAPI backend skeleton with `/health`
 - M1 auth and ingestion endpoints for users, CV documents, candidate profiles, and vacancies
+- Rules-baseline CV/vacancy extraction for seniority, skills, work format, domain, and requirements
+- Document chunk and extracted-skill records created during CV/vacancy ingestion
+- `/analyses` endpoints that store score components, evidence maps, gap reports, verdicts, and grounded recommendations
+- `POST /analyses/{id}/feedback` for feedback events that can become validated weak labels later
 - Ollama/Qwen-ready LLM gateway scaffold under `/ml/llm/*`
 - Next.js frontend shell that calls the backend health endpoint
-- M1 workspace panel for registration/login, pasted CV, and pasted vacancy submission
+- Workspace panel for registration/login, pasted CV, pasted vacancy, profile creation, and fit analysis
 - Docker Compose for PostgreSQL + pgvector, Redis, MinIO, MLflow, API, and web
 - Alembic migration setup with the initial product/ML schema
 - DVC directory placeholder and a sample dataset file
@@ -60,7 +64,7 @@ scripts/     operational and ML scripts
 
 ## Next Steps
 
-M2 will add neural structured extraction for CVs and vacancies. The intended local default is:
+Next, replace or augment the rules baseline with neural structured extraction for CVs and vacancies. The intended local default is:
 
 ```bash
 LLM_PROVIDER=ollama

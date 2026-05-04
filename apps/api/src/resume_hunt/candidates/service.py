@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from resume_hunt.analyses.extraction import parse_resume
 from resume_hunt.db.models import CandidateProfile, Document
 
 
@@ -24,17 +25,19 @@ def create_candidate_profile(
                 detail="Candidate profile source must be a resume document",
             )
 
+    parsed_resume = parse_resume(source_document.raw_text if source_document else "", target_role=target_role)
     profile_json = {
         "source": "m1_manual_profile",
         "resume_document_id": str(resume_document_id) if resume_document_id else None,
-        "neural_extraction_status": "pending_m2",
+        "extraction_status": "m2_rules_baseline",
         "raw_text_preview": source_document.raw_text[:480] if source_document else None,
+        **parsed_resume,
     }
     profile = CandidateProfile(
         user_id=user_id,
-        target_role=target_role,
-        estimated_seniority=None,
-        positioning=None,
+        target_role=parsed_resume["target_role"] or target_role,
+        estimated_seniority=parsed_resume["estimated_seniority"],
+        positioning=parsed_resume["positioning"],
         profile_json=profile_json,
     )
     session.add(profile)

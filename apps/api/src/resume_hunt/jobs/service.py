@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from resume_hunt.analyses.extraction import parse_vacancy
 from resume_hunt.db.models import Company, Job
 from resume_hunt.documents.service import create_text_document, normalize_text
 
@@ -47,18 +48,23 @@ def create_job_from_text(
     session.flush()
 
     job_title = infer_title(normalized, title)
+    extracted = parse_vacancy(normalized, job_title)
     job = Job(
         company_id=company.id,
         source=source,
         source_url=source_url,
         title=job_title,
+        seniority=extracted["seniority"],
+        domain=extracted["domain"],
+        work_format=extracted["work_format"],
+        language_requirements={"items": extracted["language_requirements"]},
         raw_document_id=document.id,
         extracted_json={
             "source": "m1_ingestion",
-            "neural_extraction_status": "pending_m2",
+            "extraction_status": "m2_rules_baseline",
             "company": company.name,
-            "title": job_title,
             "raw_text_preview": normalized[:600],
+            **extracted,
         },
     )
     session.add(job)

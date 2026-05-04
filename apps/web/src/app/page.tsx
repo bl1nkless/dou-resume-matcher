@@ -26,15 +26,15 @@ const pipeline = [
   },
   {
     title: "Evidence map",
-    state: "M3",
+    state: "M2",
     icon: ClipboardCheck,
-    detail: "Requirement-to-CV evidence with confidence"
+    detail: "Rules-baseline requirement-to-CV evidence with confidence"
   },
   {
     title: "Verdict engine",
-    state: "M4",
+    state: "M2",
     icon: Gauge,
-    detail: "Score components, gaps, and opportunity verdict"
+    detail: "Score components, gaps, feedback, and opportunity verdict"
   }
 ];
 
@@ -91,7 +91,7 @@ export default function Home() {
               <div className="flex flex-col gap-4 border-b border-ink/10 p-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">Analysis pipeline</h2>
-                  <p className="mt-1 text-sm text-ink/58">M0 baseline with product and ML milestones aligned.</p>
+                  <p className="mt-1 text-sm text-ink/58">M2 baseline with product and ML milestones aligned.</p>
                 </div>
                 <div className="flex items-center gap-2 rounded-md bg-cloud px-3 py-2 text-sm font-semibold text-moss">
                   <BookOpenCheck size={16} strokeWidth={2.2} />

@@ -76,3 +76,13 @@ Then run:
 ```bash
 ollama pull qwen2.5:7b
 ```
+
+## Validation
+
+Useful local checks:
+
+```bash
+make compose-check
+make api-test
+cd apps/web && npm run build
+```

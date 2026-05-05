@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     llm_provider: str = "disabled"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
+    embedding_backend: str = "auto"
     embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     mlflow_tracking_uri: str = "http://localhost:5000"
     jwt_secret: str = "change-me-in-local-env"

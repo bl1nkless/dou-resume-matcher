@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from resume_hunt.analyses.extraction import TRANSFERABLE_SKILLS, seniority_distance
+from resume_hunt.analyses.retrieval import build_retrieved_evidence
 from resume_hunt.db.models import (
     AnalysisRun,
     CandidateProfile,
@@ -17,7 +18,7 @@ from resume_hunt.db.models import (
     UserFeedbackEvent,
 )
 
-MODEL_VERSION = "m2-rules-baseline-0.1"
+MODEL_VERSION = "m3-retrieval-baseline-0.1"
 
 
 def create_analysis_run(
@@ -47,7 +48,9 @@ def create_analysis_run(
     session.add(analysis)
     session.flush()
 
-    evidence_rows, gap_rows, features, scores, verdict = _run_rules_baseline(analysis.id, profile, job)
+    evidence_rows, gap_rows, features, scores, verdict = _run_rules_baseline(
+        session, analysis.id, profile, job
+    )
     session.add_all(evidence_rows)
     session.add_all(gap_rows)
     session.add_all(_build_recommendations(analysis.id, profile, job, evidence_rows, gap_rows, verdict))
@@ -133,6 +136,7 @@ def _user_owns_job(session: Session, job: Job, user_id: UUID) -> bool:
 
 
 def _run_rules_baseline(
+    session: Session,
     analysis_id: UUID,
     profile: CandidateProfile,
     job: Job,
@@ -161,7 +165,16 @@ def _run_rules_baseline(
     direct_required = 0
     direct_preferred = 0
     transferable_count = 0
+    weak_count = 0
     missing_required = 0
+    embedding_meta: dict[str, int | str] = {
+        "backend": "rules_only",
+        "embedding_model": "",
+        "created": 0,
+        "skipped": 0,
+    }
+    resume_document_id = profile.profile_json.get("resume_document_id")
+    vacancy_document_id = str(job.raw_document_id) if job.raw_document_id else None
 
     for requirement in requirements:
         priority = requirement.get("priority", "required")
@@ -171,17 +184,50 @@ def _run_rules_baseline(
         else:
             preferred_count += 1
 
+        retrieved_items: list[dict] = []
+        retrieved_level: str | None = None
+        retrieved_confidence: float | None = None
+        if resume_document_id and vacancy_document_id:
+            try:
+                retrieved, embedding_meta = build_retrieved_evidence(
+                    session,
+                    resume_document_id=UUID(resume_document_id),
+                    vacancy_document_id=UUID(vacancy_document_id),
+                    requirement_text=requirement.get("text", skill_name),
+                    normalized_skill=skill_name,
+                    candidate_skills=candidate_skills,
+                )
+                retrieved_items = [
+                    {
+                        "chunk_id": str(item.chunk_id),
+                        "chunk": item.chunk,
+                        "similarity": item.similarity,
+                        "evidence_type": item.evidence_type,
+                        "skill_overlap": item.skill_overlap,
+                        "reason": item.reason,
+                    }
+                    for item in retrieved
+                    if item.evidence_type != "missing"
+                ]
+                if retrieved:
+                    top = retrieved[0]
+                    retrieved_level = top.evidence_type
+                    retrieved_confidence = top.confidence
+            except Exception:
+                retrieved_items = []
+
         candidate_skill = candidate_skills.get(skill_name)
         transferable_skill = _find_transferable_skill(skill_name, candidate_skills)
-        if candidate_skill:
+        if retrieved_level == "direct" or candidate_skill:
             evidence_level = "direct"
-            confidence = 0.9
+            confidence = max(0.9 if candidate_skill else 0.0, retrieved_confidence or 0.0)
             if priority == "required":
                 direct_required += 1
             else:
                 direct_preferred += 1
             evidence_chunks = {
-                "items": [
+                "items": retrieved_items
+                or [
                     {
                         "chunk": candidate_skill.get("evidence_text"),
                         "evidence_type": "direct",
@@ -190,12 +236,13 @@ def _run_rules_baseline(
                     }
                 ]
             }
-        elif transferable_skill:
-            evidence_level = "soft_gap"
-            confidence = 0.68
+        elif retrieved_level == "transferable" or transferable_skill:
+            evidence_level = "transferable"
+            confidence = max(0.68 if transferable_skill else 0.0, retrieved_confidence or 0.0)
             transferable_count += 1
             evidence_chunks = {
-                "items": [
+                "items": retrieved_items
+                or [
                     {
                         "chunk": transferable_skill.get("evidence_text"),
                         "evidence_type": "transferable",
@@ -204,11 +251,20 @@ def _run_rules_baseline(
                     }
                 ]
             }
-            gap_rows.append(_gap_for_transferable(analysis_id, skill_name, transferable_skill, priority))
+            if transferable_skill:
+                gap_rows.append(_gap_for_transferable(analysis_id, skill_name, transferable_skill, priority))
+            else:
+                gap_rows.append(_gap_for_weak_retrieval(analysis_id, skill_name, priority))
+        elif retrieved_level == "weak":
+            evidence_level = "weak"
+            confidence = retrieved_confidence or 0.45
+            weak_count += 1
+            evidence_chunks = {"items": retrieved_items}
+            gap_rows.append(_gap_for_weak_retrieval(analysis_id, skill_name, priority))
         else:
             evidence_level = "missing"
             confidence = 0.35
-            evidence_chunks = {"items": []}
+            evidence_chunks = {"items": retrieved_items}
             if priority == "required":
                 missing_required += 1
             gap_rows.append(_gap_for_missing(analysis_id, skill_name, priority))
@@ -228,9 +284,9 @@ def _run_rules_baseline(
     required_denominator = max(required_count, 1)
     preferred_denominator = max(preferred_count, 1)
     seniority_gap = seniority_distance(profile.estimated_seniority, job.seniority)
-    skill_match = (direct_required + 0.5 * transferable_count) / required_denominator
+    skill_match = (direct_required + 0.5 * transferable_count + 0.25 * weak_count) / required_denominator
     preferred_match = direct_preferred / preferred_denominator if preferred_count else 0.0
-    evidence_score = (direct_required + 0.65 * transferable_count) / required_denominator
+    evidence_score = (direct_required + 0.65 * transferable_count + 0.35 * weak_count) / required_denominator
     seniority_score = max(0.0, 1.0 - max(seniority_gap, 0) * 0.28)
     gap_score = max(0.0, 1.0 - missing_required / required_denominator)
     interview_readiness = min(1.0, evidence_score * 0.85 + preferred_match * 0.15)
@@ -253,10 +309,15 @@ def _run_rules_baseline(
         "skill_match_preferred_ratio": round(preferred_match, 4),
         "direct_evidence_ratio": round(direct_required / required_denominator, 4),
         "transferable_evidence_ratio": round(transferable_count / required_denominator, 4),
+        "weak_evidence_ratio": round(weak_count / required_denominator, 4),
         "missing_required_skill_count": missing_required,
         "seniority_distance": seniority_gap,
         "domain_similarity_score": domain_score,
         "interview_readiness_score": round(interview_readiness, 4),
+        "embedding_backend": embedding_meta["backend"],
+        "embedding_model": embedding_meta["embedding_model"],
+        "embeddings_created": embedding_meta["created"],
+        "embeddings_skipped": embedding_meta["skipped"],
     }
     scores = {
         "overall_score": round(overall, 4),
@@ -291,6 +352,17 @@ def _gap_for_transferable(
         severity=0.45 if priority == "required" else 0.25,
         reason=f"No direct {skill_name} evidence, but {transferable_skill.get('canonical_name')} is relevant.",
         recommended_action=f"Position the transferable {transferable_skill.get('canonical_name')} evidence honestly.",
+    )
+
+
+def _gap_for_weak_retrieval(analysis_id: UUID, skill_name: str, priority: str) -> GapReport:
+    return GapReport(
+        analysis_run_id=analysis_id,
+        gap_text=skill_name,
+        gap_type="keyword_gap" if priority == "required" else "learning_gap",
+        severity=0.4 if priority == "required" else 0.2,
+        reason=f"Retrieved CV evidence is related to {skill_name}, but direct proof is weak.",
+        recommended_action=f"Clarify honest evidence for {skill_name} if it exists; otherwise keep it as a gap.",
     )
 
 
@@ -345,7 +417,7 @@ def _build_recommendations(
         for row in evidence_rows
         if row.evidence_level == "direct" and row.requirement_priority == "required"
     ]
-    transferable = [row.requirement_text for row in evidence_rows if row.evidence_level == "soft_gap"]
+    transferable = [row.requirement_text for row in evidence_rows if row.evidence_level == "transferable"]
     forbidden = [gap.gap_text for gap in gap_rows if gap.gap_type == "fake_risk_gap"]
     return [
         Recommendation(

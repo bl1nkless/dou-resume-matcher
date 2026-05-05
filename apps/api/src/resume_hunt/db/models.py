@@ -16,6 +16,24 @@ class Vector(UserDefinedType):
     def get_col_spec(self, **_: object) -> str:
         return f"vector({self.dimensions})"
 
+    def bind_processor(self, dialect: object) -> object:
+        def process(value: list[float] | str | None) -> str | None:
+            if value is None or isinstance(value, str):
+                return value
+            return "[" + ",".join(str(round(float(item), 8)) for item in value) + "]"
+
+        return process
+
+    def result_processor(self, dialect: object, coltype: object) -> object:
+        def process(value: list[float] | str | None) -> list[float] | None:
+            if value is None:
+                return None
+            if isinstance(value, list):
+                return [float(item) for item in value]
+            return [float(item) for item in value.strip("[]").split(",") if item]
+
+        return process
+
 
 class Base(DeclarativeBase):
     pass
@@ -143,7 +161,7 @@ class ChunkEmbedding(Base, TimestampMixin):
     chunk_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("document_chunks.id"), primary_key=True, nullable=False
     )
-    embedding_model: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_model: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
 
 
@@ -218,3 +236,4 @@ Index("idx_jobs_source_url", Job.source_url)
 Index("idx_analysis_runs_user_id", AnalysisRun.user_id)
 Index("idx_analysis_runs_candidate_job", AnalysisRun.candidate_profile_id, AnalysisRun.job_id)
 Index("idx_extracted_skills_owner", ExtractedSkill.owner_type, ExtractedSkill.owner_id)
+Index("idx_chunk_embeddings_model", ChunkEmbedding.embedding_model)

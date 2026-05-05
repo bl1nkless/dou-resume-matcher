@@ -21,6 +21,9 @@ dev = [
     "pytest>=8.3.3",
     "ruff>=0.7.0",
 ]
+ml = [
+    "sentence-transformers>=3.2.1",
+]
 
 [build-system]
 requires = ["hatchling"]

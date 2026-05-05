@@ -4,7 +4,7 @@ ML-first job search copilot for Ukrainian IT candidates. The MVP starts with one
 
 ## Current Milestone
 
-M2: rules-baseline structured extraction and single-vacancy fit analysis.
+M3: rules-baseline extraction with embeddings and evidence retrieval.
 
 Included now:
 
@@ -12,6 +12,9 @@ Included now:
 - M1 auth and ingestion endpoints for users, CV documents, candidate profiles, and vacancies
 - Rules-baseline CV/vacancy extraction for seniority, skills, work format, domain, and requirements
 - Document chunk and extracted-skill records created during CV/vacancy ingestion
+- Hybrid embedding service with sentence-transformers support and deterministic local fallback
+- Seedable 100+ skill taxonomy with common aliases for normalization experiments
+- Retrieval-backed evidence maps with chunk ids, similarity, overlap, confidence, and reasons
 - `/analyses` endpoints that store score components, evidence maps, gap reports, verdicts, and grounded recommendations
 - `POST /analyses/{id}/feedback` for feedback events that can become validated weak labels later
 - Ollama/Qwen-ready LLM gateway scaffold under `/ml/llm/*`
@@ -84,5 +87,14 @@ Useful local checks:
 ```bash
 make compose-check
 make api-test
+make seed-taxonomy
+make backfill-embeddings
 cd apps/web && npm run build
+```
+
+For real sentence-transformer embeddings instead of the deterministic fallback:
+
+```bash
+cd apps/api && uv sync --extra ml
+EMBEDDING_BACKEND=sentence_transformers uv run python scripts/backfill_embeddings.py
 ```
